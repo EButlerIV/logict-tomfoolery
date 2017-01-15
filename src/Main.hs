@@ -10,7 +10,7 @@ import Control.Monad.Logic.Class
 import Data.Witherable
 
 
-import Data.List (delete, (\\))
+import Data.List (find, delete, (\\))
 import Control.Lens (element, (.~))
 import Control.Applicative ((<|>) )
 import Control.Monad.Trans.State.Strict as State
@@ -25,6 +25,7 @@ import qualified Data.Map as Map
 import Data.Maybe (listToMaybe)
 import qualified Control.Monad.State.Class as STC
 import Control.Monad.State.Class (MonadState)
+import System.Random
 
 type GridM a = SetT Position (LogicT (State [Position])) a
 
@@ -170,8 +171,49 @@ constructPath graph = runMonads $ do
 
 runMonads :: forall a. (SetT Position (LogicT (State [Position]))) a -> Maybe a
 runMonads (SetT ms) = listToMaybe $ fst $ runIdentity $ flip runStateT ([] :: [Position]) $
-                                ((observeAllT $ fmap fst $ flip runStateT (Set.empty :: Set Position) ms) :: State ([Position]) [a])
+                                ((observeManyT 1 $ fmap fst $ flip runStateT (Set.empty :: Set Position) ms) :: State ([Position]) [a])
+
+newGraph :: Integer -> Integer -> Graph
+newGraph x y
+  | x < 1 = Map.fromList [] :: Graph
+  | y < 1 = Map.fromList [] :: Graph
+  | otherwise = Map.fromList [((Position a b), Other) | a <- [0..x], b <- [0..y]]
+
+randomGraph :: Integer -> Integer -> IO (Graph)
+randomGraph x y = do
+  theBoard <- pure $ newGraph x y
+  rX <- (randomRIO (0, x))
+  rY <- (randomRIO (0, y))
+  randomStart <- return $ Position rX rY
+  rX <- (randomRIO (0, x))
+  rY <- (randomRIO (0, y))
+  randomEnd <- return $ Position rX rY
+  theBoard <- return $ Map.insert randomStart Start theBoard
+  theBoard <- return $ Map.insert randomEnd End theBoard
+  return theBoard
+
+
+vertToString :: (Position, Label) -> String
+vertToString ((Position px py), val) = (if py == 0 then "\n" else "") ++ case val of Start -> "S"; End -> "E"; Other -> "0"
+
+printGraphWithPath :: Graph -> [Position] -> String
+printGraphWithPath g p = Prelude.foldl posToString "" (Map.toList g)
+    where posToString memo vert@(pos, lab) = case (find (\x -> x == pos) p) of
+                                                Just (Position px py) -> memo ++ (if py == 0 then "\n#" else "#")
+                                                Nothing -> memo ++ vertToString vert
+
+printGraph :: Graph -> String
+printGraph g = Prelude.foldl posToString "" (Map.toList g)
+    where posToString memo vert = memo ++ (vertToString vert)
 
 main :: IO ()
 main = do
-         print $ constructPath board
+         newGraph <- randomGraph 10 10
+         case constructPath newGraph of
+           Just path -> do
+             putStrLn $ printGraphWithPath newGraph path
+             putStrLn $ printGraph newGraph
+             putStrLn $ show path
+           _ -> do
+              putStrLn "No Path Found"
+              putStrLn $ show newGraph
